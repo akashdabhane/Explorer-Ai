@@ -1,18 +1,25 @@
 import { NextResponse } from 'next/server';
 import { getServerSession } from 'next-auth';
 import { authOptions } from '@/app/api/auth/[...nextauth]/route';
-import { processDocument } from '@/lib/documentProcessor';
+// import { processDocument } from '@/lib/documentProcessor';
+import Source from '@/models/Source';
+import { uploadToCloudinary } from '@/lib/cloudinaryClient';
+import connectDB from '@/lib/mongodb';
+
 
 export async function POST(request) {
   try {
-    const session = await getServerSession(authOptions);
-    if (!session) {
-      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
-    }
+    // const session = await getServerSession(authOptions);
+    // if (!session) {
+    //   return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+    // }
 
     const formData = await request.formData();
     const file = formData.get('file');
     const notebookId = formData.get('notebookId');
+    const userId = formData.get('userId'); // Get userId from formData
+
+    await connectDB();
 
     if (!file || !notebookId) {
       return NextResponse.json(
@@ -46,6 +53,7 @@ export async function POST(request) {
       'docx': 'docx',
       'txt': 'txt',
       'md': 'md',
+      'csv': 'csv',
     };
     const fileType = fileTypeMap[fileExtension];
 
@@ -60,23 +68,27 @@ export async function POST(request) {
     const bytes = await file.arrayBuffer();
     const buffer = Buffer.from(bytes);
 
-    // Process document in background
-    // In production, use a queue like Bull or AWS SQS
-    const result = await processDocument({
-      userId: session.user.id,
-      notebookId,
-      file: buffer,
-      fileName: file.name,
-      fileType,
-    });
+    const { url: cloudinaryUrl, publicId } = await uploadToCloudinary(
+      buffer,
+      file.name
+    );
+
+    const source = await Source.create({
+      notebookId, 
+      userId,
+      sourceType: fileType,
+      cloudinaryUrl,
+      cloudinaryPublicId: publicId,
+      sourceTitle: file.name
+    })
 
     return NextResponse.json({
-      message: 'Document uploaded and processing started',
-      document: result.document,
-      chunksCreated: result.chunksCreated,
+      message: 'Document uploaded successfully',
+      source,
     }, { status: 201 });
   } catch (error) {
     console.error('Upload document error:', error);
+    
     return NextResponse.json(
       { error: error.message || 'Failed to upload document' },
       { status: 500 }

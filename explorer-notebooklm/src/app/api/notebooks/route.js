@@ -6,17 +6,17 @@ import Notebook from '@/models/Notebook';
 
 export async function GET(request) {
   try {
-    const session = await getServerSession(authOptions);
-    if (!session) {
-      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
-    }
+    // const session = await getServerSession(authOptions);
+    // if (!session) {
+    //   return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+    // }
+    const { userId } = await request.json();
 
     await connectDB();
 
-    const notebooks = await Notebook.find({ userId: session.user.id })
-      .sort({ createdAt: -1 })
-      .select('-conversationHistory');
-
+    const notebooks = await Notebook.find({ userId })
+      .sort({ createdAt: -1 });
+      
     return NextResponse.json({ notebooks });
   } catch (error) {
     console.error('Get notebooks error:', error);
@@ -29,16 +29,16 @@ export async function GET(request) {
 
 export async function POST(request) {
   try {
-    const session = await getServerSession(authOptions);
-    if (!session) {
-      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
-    }
+    // const session = await getServerSession(authOptions);
+    // if (!session) {
+    //   return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+    // }
 
-    const { title, description, color } = await request.json();
+    const { notebookTitle, description, color, userId } = await request.json();
 
-    if (!title) {
+    if (!notebookTitle) {
       return NextResponse.json(
-        { error: 'Title is required' },
+        { error: 'Notebook title is required' },
         { status: 400 }
       );
     }
@@ -46,8 +46,9 @@ export async function POST(request) {
     await connectDB();
 
     const notebook = await Notebook.create({
-      userId: session.user.id,
-      title,
+      // userId: session.user.id,
+      userId,
+      notebookTitle,
       description: description || '',
       color: color || '#3b82f6',
     });

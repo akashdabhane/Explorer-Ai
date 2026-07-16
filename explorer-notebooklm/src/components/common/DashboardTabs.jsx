@@ -1,15 +1,12 @@
 "use client";
 
-import { useState } from "react";
-
 const tabs = [
   "All",
   "My notebooks",
   "Featured notebooks",
 ];
 
-export default function DashboardTabs() {
-  const [active, setActive] = useState("All");
+export default function DashboardTabs({ active, setActive }) {
 
   return (
     <div className="flex items-center gap-3">

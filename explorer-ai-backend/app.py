@@ -1,12 +1,14 @@
 from flask import Flask, jsonify, request, Response, send_file
 from flask_cors import CORS
 import os
-import re
+from pathlib import Path
 from dotenv import load_dotenv
-import google.generativeai as genai
-from langchain_community.document_loaders import PyPDFLoader, TextLoader, Docx2txtLoader
 from langchain_text_splitters import RecursiveCharacterTextSplitter
-from pinecone import Pinecone
+
+from lib.llm import model
+from lib.vector_db import dense_index, to_namespace_name
+from utils.document_loaders import load_documents
+from database.database import db
 
 
 app = Flask(__name__)
@@ -18,78 +20,27 @@ load_dotenv()
 
 
 
-VECTOR_DB_DIR = "explorer-notebooklm-db"
-
-
-# LLM configuration ============================
-genai.configure(api_key=os.getenv("GEMINI_API_KEY"))
-model = genai.GenerativeModel("gemini-2.5-flash")
-
-# Initialize a Pinecone client with your API key
-pc = Pinecone(api_key=os.getenv("PINECONE_API_KEY"))
-
-# Create an index for dense vectors with integrated embedding
-index_name = VECTOR_DB_DIR
-if not pc.has_index(index_name):
-    pc.create_index_for_model(
-        name=index_name,
-        cloud="aws",
-        region="us-east-1",
-        embed={
-            "model":"llama-text-embed-v2",
-            "field_map":{"text": "chunk_text"}
-        }
-    )
-
-# Target the index
-dense_index = pc.Index(index_name)
-
-
 # Config ============================
 UPLOAD_FOLDER = "uploads"
 os.makedirs(UPLOAD_FOLDER, exist_ok=True)
 app.config["UPLOAD_FOLDER"] = UPLOAD_FOLDER
 
 
-# Load documents helper function ============================
-def load_documents(file_path):
-    extension = os.path.splitext(file_path)[1].lower()
-
-    if extension == ".pdf":
-        loader = PyPDFLoader(file_path)
-    elif extension == ".txt":
-        loader = TextLoader(file_path)
-    elif extension in [".docx", ".doc"]:
-        loader = Docx2txtLoader(file_path)
-    else:
-        raise ValueError("Unsupported file type: {}".format(extension))
-
-    documents = loader.load()
-    return documents
-
-
-def to_namespace_name(email_id: str) -> str:
-    safe_id = re.sub(r"[^a-zA-Z0-9._-]", "_", email_id)
-    safe_id = safe_id.strip("._-")
-
-    if len(safe_id) < 3:
-        safe_id = f"user_{safe_id}" if safe_id else "user_default"
-
-    if len(safe_id) > 512:
-        safe_id = safe_id[:512]
-
-    return f"user_{safe_id}"
 
 @app.route("/api/health", methods=["GET"])
 def health_check():
     return jsonify({"status": "healthy"}), 200
 
+
 @app.route("/api/upload", methods=["POST"])
 def upload_file():
 
-    email_id = request.form.get("email_id", "unknown")
-    if not email_id:
-        return jsonify({"error": "Email ID is required"}), 400
+    notebookId = request.form.get("notebookId", "unknown")
+    userId = request.form.get("userId", "unknown")
+    sourceId = request.form.get("sourceId", "unknown")
+
+    if not notebookId or not userId:
+        return jsonify({"error": "Notebook ID and User ID are required"}), 400
 
     if "file" not in request.files:
         return jsonify({"error": "No file provided"}), 400
@@ -105,6 +56,26 @@ def upload_file():
 
         # load document
         documents = load_documents(file_path)
+        print(f"Documents : {documents}")
+
+        # # add extracted data from documents to mongodb database
+        # if db is not None:
+        #     sources_collection = db["sources"]
+        #     sources_collection.find_one_and_update(
+        #         {"_id": sourceId},
+        #         {"$set": {
+        #             'sourceTitle': documents
+        #         }},
+        #         upsert=True
+        #     )
+
+        # remove/delete file from uploads directory after loading
+        file_path = Path(file_path)
+        if file_path.exists():
+            file_path.unlink()
+            print("File deleted successfully.")
+        else:
+            print("File does not exist.")
 
         # split into chunks
         text_splitter = RecursiveCharacterTextSplitter(
@@ -122,7 +93,7 @@ def upload_file():
             })
 
         dense_index.upsert_records(
-            namespace=to_namespace_name(email_id), 
+            namespace=to_namespace_name(notebookId, userId),
             records=records
         )
 
@@ -131,7 +102,7 @@ def upload_file():
             {
                 "message": "Document uploaded successfully",
                 "chunks_stored": len(chunks),
-                "collection": to_namespace_name(email_id),
+                "collection": to_namespace_name(notebookId, userId),
             }
         )
 
@@ -139,23 +110,23 @@ def upload_file():
         return jsonify({"error": str(e)}), 500
 
 
-# Chat pinecone endpoint ============================
+# Chat endpoint ============================
 @app.route("/api/chat", methods=["POST"])
 def post_chat():
     data = request.get_json()
 
-    email_id = data.get("email_id", "unknown")
+    notebookId = data.get("notebookId", "unknown")
+    userId = data.get("userId", "unknown")
     question = data.get("question", "")
 
-    if not email_id or not question:
-        return jsonify({"error": "email_id and question are required"}), 400    
+    if not notebookId or not userId or not question:
+        return jsonify({"error": "Notebook ID, User ID, and question are required"}), 400
 
-  
     # Search the index
     relevant_records = dense_index.search(
-        namespace="company_policies" if email_id == "company_policies" else to_namespace_name(email_id),
+        namespace=to_namespace_name(notebookId, userId),
         query={
-            "top_k": 4,
+            "top_k": 5,
             "inputs": {
                 'text': question
             }
@@ -212,6 +183,41 @@ QUESTION:
             "metadata": unique_metadata,
         }
     )
+
+
+# remove document from vector database
+@app.route("/api/remove_document", methods=["POST"])
+def remove_document():
+    data = request.get_json()
+
+    notebookId = data.get("notebookId", "unknown")
+    userId = data.get("userId", "unknown")
+    sourceName = data.get("sourceName", "")
+
+    if not notebookId or not userId or not sourceName:
+        return jsonify({"error": "Notebook ID, User ID, and source name are required"}), 400
+
+    try:
+        namespace = to_namespace_name(notebookId, userId)
+        dense_index.delete(
+            filter={"source": {"$eq": f"uploads\\{sourceName}"}},
+            namespace=namespace
+        )
+
+        return jsonify({"message": "Document removed successfully"}), 200
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
+    
+
+def get_all_chunks_by_namespace(notebookId: str, userId: str):
+    namespace = to_namespace_name(notebookId, userId)
+    try:
+        # Retrieve all records in the namespace
+        all_records = dense_index.fetch(namespace=namespace)
+        return all_records
+    except Exception as e:
+        return {"error": str(e)}, 500
+
 
 if __name__ == "__main__":
     app.run(debug=True, host="0.0.0.0", port=5000)

@@ -30,7 +30,7 @@ export default function SignInPage() {
       if (result?.error) {
         setError(result.error);
       } else {
-        router.push('/dashboard');
+        router.push('/');
       }
     } catch (error) {
       setError('An error occurred. Please try again.');

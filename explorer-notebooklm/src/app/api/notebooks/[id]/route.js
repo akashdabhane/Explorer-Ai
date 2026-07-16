@@ -3,21 +3,23 @@ import { getServerSession } from 'next-auth';
 import { authOptions } from '@/app/api/auth/[...nextauth]/route';
 import connectDB from '@/lib/mongodb';
 import Notebook from '@/models/Notebook';
-import Document from '@/models/Document';
-import { deleteCollection } from '@/lib/chromaClient';
+// import Document from '@/models/Document';
+// import { deleteCollection } from '@/lib/chromaClient';
+
 
 export async function GET(request, { params }) {
   try {
-    const session = await getServerSession(authOptions);
-    if (!session) {
-      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
-    }
+    // const session = await getServerSession(authOptions);
+    // if (!session) {
+    //   return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+    // }
+    const { id: notebookId } = await params;
 
     await connectDB();
 
     const notebook = await Notebook.findOne({
-      _id: params.id,
-      userId: session.user.id,
+      _id: notebookId,
+      // userId: session.user.id,
     });
 
     if (!notebook) {
@@ -34,18 +36,20 @@ export async function GET(request, { params }) {
   }
 }
 
+
 export async function PATCH(request, { params }) {
   try {
-    const session = await getServerSession(authOptions);
-    if (!session) {
-      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
-    }
+    // const session = await getServerSession(authOptions);
+    // if (!session) {
+    //   return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+    // }
+    const { id: notebookId } = await params;
 
     const updates = await request.json();
     await connectDB();
 
     const notebook = await Notebook.findOneAndUpdate(
-      { _id: params.id, userId: session.user.id },
+      { _id: notebookId /*, userId: session.user.id */ },
       { $set: updates },
       { new: true, runValidators: true }
     );
@@ -54,7 +58,7 @@ export async function PATCH(request, { params }) {
       return NextResponse.json({ error: 'Notebook not found' }, { status: 404 });
     }
 
-    return NextResponse.json({ notebook });
+    return NextResponse.json({ message: 'Notebook updated successfully', notebook });
   } catch (error) {
     console.error('Update notebook error:', error);
     return NextResponse.json(
@@ -64,18 +68,21 @@ export async function PATCH(request, { params }) {
   }
 }
 
+
+// unfinished route
 export async function DELETE(request, { params }) {
   try {
-    const session = await getServerSession(authOptions);
-    if (!session) {
-      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
-    }
+    // const session = await getServerSession(authOptions);
+    // if (!session) {
+    //   return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+    // }
+    const { id: notebookId } = await params;
 
     await connectDB();
 
     const notebook = await Notebook.findOne({
-      _id: params.id,
-      userId: session.user.id,
+      _id: notebookId,
+      // userId: session.user.id,
     });
 
     if (!notebook) {
@@ -83,23 +90,23 @@ export async function DELETE(request, { params }) {
     }
 
     // Delete all documents in this notebook
-    const { deleteDocument } = await import('@/lib/documentProcessor');
-    const documents = await Document.find({ notebookId: params.id });
+    // const { deleteDocument } = await import('@/lib/documentProcessor');
+    // const documents = await Document.find({ notebookId: notebookId });
     
-    for (const doc of documents) {
-      await deleteDocument(doc._id.toString());
-    }
+    // for (const doc of documents) {
+    //   await deleteDocument(doc._id.toString());
+    // }
 
     // Delete Chroma collection
-    const collectionName = `notebook_${params.id}`;
-    try {
-      await deleteCollection(collectionName);
-    } catch (error) {
-      console.warn('Chroma collection may not exist:', error.message);
-    }
+    // const collectionName = `notebook_${notebookId}`;
+    // try {
+    //   await deleteCollection(collectionName);
+    // } catch (error) {
+    //   console.warn('Chroma collection may not exist:', error.message);
+    // }
 
     // Delete notebook
-    await Notebook.findByIdAndDelete(params.id);
+    await Notebook.findByIdAndDelete(notebookId);
 
     return NextResponse.json({ message: 'Notebook deleted successfully' });
   } catch (error) {

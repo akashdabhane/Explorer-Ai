@@ -6,7 +6,7 @@ cloudinary.config({
   api_secret: process.env.CLOUDINARY_API_SECRET,
 });
 
-export async function uploadToCloudinary(fileBuffer, fileName, folder = 'notebooklm-docs') {
+export async function uploadToCloudinary(fileBuffer, fileName, folder = 'explorer-notebooklm-clone') {
   try {
     return new Promise((resolve, reject) => {
       const uploadStream = cloudinary.uploader.upload_stream(
