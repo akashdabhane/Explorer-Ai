@@ -18,6 +18,22 @@ const nextConfig = {
       }
     ],
   },
+  async rewrites() {
+    return [
+      {
+        source: '/api/documents/upload',
+        destination: 'http://localhost:8000/api/upload',
+      },
+      {
+        source: '/api/documents/:id*',
+        destination: 'http://localhost:8000/api/sources/:id*',
+      },
+      {
+        source: '/api/:path*',
+        destination: 'http://localhost:8000/api/:path*',
+      },
+    ];
+  },
   webpack: (config, { isServer }) => {
     if (!isServer) {
       config.resolve.fallback = {
