@@ -14,12 +14,12 @@ const GeneratedStudioDocSchema = new mongoose.Schema({
         index: true
     },
     messageRole: {
-        type: string,
+        type: String,
         enum: ["user", "ai"],
         required: true
     },
     message: {
-        type: string,
+        type: String,
         trim: true,
         required: true
     },

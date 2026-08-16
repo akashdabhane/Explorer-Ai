@@ -21,3 +21,10 @@
 #         results = dense_index.fetch(ids=[items['id']], namespace=namespace)
 #         print(f"Results for ID {items['id']}: {results}")
 
+from langchain_community.document_loaders import UnstructuredURLLoader
+
+loader = UnstructuredURLLoader("https://drive.google.com/file/d/1kkpXublEd4zR5iRjOcjWm0MQvF_nrtj5/view?usp=sharing")
+
+documents = loader.load()
+
+print(documents)

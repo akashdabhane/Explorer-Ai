@@ -1,4 +1,4 @@
-from langchain_community.document_loaders import PyPDFLoader, TextLoader, Docx2txtLoader
+from langchain_community.document_loaders import PyPDFLoader, TextLoader, Docx2txtLoader, UnstructuredMarkdownLoader, CSVLoader
 import os
 
 # Load documents helper function ============================
